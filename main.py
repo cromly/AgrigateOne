@@ -97,7 +97,7 @@ def crawl(start_url, max_pages, max_depth, processes):
 
 if __name__ == "__main__":
     start_url = 'https://webscraper.io/test-sites/e-commerce/allinone'
-    max_pages = 10
+    max_pages = 100
     max_depth = 1
-    processes = 2
+    processes = 5
     crawl(start_url, max_pages, max_depth, processes)
