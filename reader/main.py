@@ -1,58 +1,79 @@
 import os
 import psycopg2
+from bs4 import BeautifulSoup
 
 
-def purge_webpages_table(conn):
-    print("Purging the 'webpages' table...")
+def get_bike_id(url):
+    # Extract bike ID from the URL
+    return url.split('/')[-2] if url else None
+
+
+def extract_bike_data(html_file):
+    # Initialize variables
+    bike_id = None
+    bike_url = None
+
+    # Parse the HTML file using BeautifulSoup
+    with open(html_file, 'r', encoding='utf-8') as f:
+        soup = BeautifulSoup(f, 'html.parser')
+
+    # Find the 'marketplace-item-single-list' tag
+    marketplace_item_tag = soup.find('marketplace-item-single-list')
+    if marketplace_item_tag:
+        # Extract the value of the ':marketplace-item-url' attribute
+        bike_url_attr = marketplace_item_tag.get(':marketplace-item-url')
+        if bike_url_attr:
+            # Extract bike URL from the attribute value
+            bike_url = bike_url_attr.strip("'")
+            # Extract bike ID from the URL
+            bike_id = get_bike_id(bike_url)
+
+    return bike_id, bike_url
+
+
+def insert_bike_data(directory, conn):
+    print("Inserting bike data into the 'webbikes' table...")
     try:
         # Create a cursor object
         cur = conn.cursor()
 
-        # Purge (delete all rows) from the 'webpages' table
-        cur.execute("DELETE FROM webpages;")
-
-        # Commit the transaction
+        # Step 1: Purge tables 'webpages' and 'webbikes'
+        print("Purging tables 'webpages' and 'webbikes'...")
+        cur.execute("TRUNCATE TABLE webpages;")
+        cur.execute("TRUNCATE TABLE webbikes;")
         conn.commit()
+        print("Tables purged successfully.")
 
-        print("Table purged successfully!")
-
-    except psycopg2.Error as e:
-        conn.rollback()  # Roll back changes if an error occurs
-        print("Error purging the 'webpages' table:", e)
-
-
-def insert_html_filenames(directory, conn):
-    print("Inserting HTML filenames into the 'webpages' table...")
-    try:
-        # Create a cursor object
-        cur = conn.cursor()
-
-        # Purge the 'webpages' table before inserting new data
-        purge_webpages_table(conn)
-
-        # Counter for page_id
-        page_id_counter = 1
-
-        # Iterate over HTML files in the directory
+        # Step 2: Insert data into 'webpages' table
+        print("Inserting data into 'webpages' table...")
         for filename in os.listdir(directory):
             if filename.endswith(".html"):
-                # Extract page URL from the filename
-                page_url = filename
-
-                # Insert data into the 'webpages' table with the page_id_counter value
-                cur.execute("INSERT INTO webpages (page_id, page_url) VALUES (%s, %s);", (page_id_counter, page_url))
-
-                # Increment the page_id_counter
-                page_id_counter += 1
-
-        # Commit the transaction
+                cur.execute("INSERT INTO webpages (page_url) VALUES (%s);", (filename,))
         conn.commit()
+        print("Data inserted into 'webpages' table successfully.")
 
-        print("HTML filenames inserted successfully!")
+        # Step 3: Insert data into 'webbikes' table
+        print("Inserting data into 'webbikes' table...")
+        for filename in os.listdir(directory):
+            if filename.endswith(".html"):
+                bike_id, bike_url = extract_bike_data(os.path.join(directory, filename))
+                if bike_id and bike_url:
+                    cur.execute("SELECT page_id FROM webpages WHERE page_url = %s;", (filename,))
+                    page_id = cur.fetchone()[0]
+                    cur.execute("INSERT INTO webbikes (bike_id, page_id, bike_url) VALUES (%s, %s, %s);",
+                                (bike_id, page_id, bike_url))
+        conn.commit()
+        print("Data inserted into 'webbikes' table successfully.")
 
-    except psycopg2.Error as e:
+    except (psycopg2.Error, FileNotFoundError) as e:
         conn.rollback()  # Roll back changes if an error occurs
-        print("Error inserting HTML filenames:", e)
+        print("Error inserting bike data:", e)
+
+    finally:
+        # Close the cursor and connection
+        cur.close()
+        conn.close()
+        print("Connection closed.")
 
 
 if __name__ == "__main__":
@@ -75,8 +96,8 @@ if __name__ == "__main__":
         )
         print("Connected to the database!")
 
-        # Call function to insert HTML filenames into the 'webpages' table
-        insert_html_filenames(directory, conn)
+        # Call function to insert bike data into the 'webbikes' table
+        insert_bike_data(directory, conn)
 
         # Close the connection
         conn.close()

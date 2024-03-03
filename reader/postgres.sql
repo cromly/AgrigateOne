@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS webpages (
+    page_id SERIAL PRIMARY KEY,
+    page_url VARCHAR(255) NOT NULL
+);
